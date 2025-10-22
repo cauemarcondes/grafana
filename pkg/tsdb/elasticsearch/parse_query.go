@@ -34,6 +34,7 @@ func parseQuery(tsdbQuery []backend.DataQuery, logger log.Logger) ([]*Query, err
 		alias := model.Get("alias").MustString("")
 		intervalMs := model.Get("intervalMs").MustInt64(0)
 		interval := q.Interval
+		esqlQuery := model.Get("esqlQuery").MustString("")
 
 		queries = append(queries, &Query{
 			RawQuery:      rawQuery,
@@ -45,6 +46,7 @@ func parseQuery(tsdbQuery []backend.DataQuery, logger log.Logger) ([]*Query, err
 			RefID:         q.RefID,
 			MaxDataPoints: q.MaxDataPoints,
 			TimeRange:     q.TimeRange,
+			ESQLQuery:     esqlQuery,
 		})
 	}
 

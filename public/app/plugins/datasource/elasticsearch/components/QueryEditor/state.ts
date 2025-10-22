@@ -10,6 +10,7 @@ export const initQuery = createAction('init');
 
 export const changeQuery = createAction<ElasticsearchDataQuery['query']>('change_query');
 
+export const changeESQLQuery = createAction<ElasticsearchDataQuery['esqlQuery']>('change_esql_query');
 export const changeAliasPattern = createAction<ElasticsearchDataQuery['alias']>('change_alias_pattern');
 
 export const queryReducer = (prevQuery: ElasticsearchDataQuery['query'], action: Action) => {
@@ -22,6 +23,15 @@ export const queryReducer = (prevQuery: ElasticsearchDataQuery['query'], action:
   }
 
   return prevQuery;
+};
+
+export const esqlQueryReducer = (prevESQLQuery: ElasticsearchDataQuery['esqlQuery'], action: Action) => {
+  console.log('### caue ~ esqlQueryReducer ~ action:', action);
+  if (changeESQLQuery.match(action)) {
+    return action.payload;
+  }
+
+  return prevESQLQuery;
 };
 
 export const aliasPatternReducer = (prevAliasPattern: ElasticsearchDataQuery['alias'], action: Action) => {

@@ -42,10 +42,78 @@ const (
 	rawDataType     = "raw_data"
 	// Logs type
 	logsType = "logs"
+	// ESQL type
+	esqlType = "esql"
 )
 
 var searchWordsRegex = regexp.MustCompile(regexp.QuoteMeta(es.HighlightPreTagsString) + `(.*?)` + regexp.QuoteMeta(es.HighlightPostTagsString))
 var aliasPatternRegex = regexp.MustCompile(`\{\{([\s\S]+?)\}\}`)
+
+func parseESQLResponse(resp *es.ESQLResponse, logger log.Logger, refID string) (*backend.QueryDataResponse, error) {
+	result := backend.QueryDataResponse{
+		Responses: backend.Responses{},
+	}
+	if resp == nil {
+		logger.Error("################ resp is nil")
+		return &result, nil
+	}
+	logger.Info("################ resp HERE")
+	esqlResponse := resp.Response
+
+	queryRes := backend.DataResponse{}
+	queryRes.Status = 200
+	isFilterable := true
+	size := esqlResponse.DocumentsFound
+	allFields := make([]*data.Field, len(esqlResponse.Columns))
+	logger.Info("################ esqlResponse.Columns", "esqlResponse.Columns", esqlResponse.Columns)
+	for i, column := range esqlResponse.Columns {
+		propNameValue := findTheFirstNonNilDocValueForIndex(esqlResponse.Values, i)
+		logger.Info("################ propNameValue", "propNameValue", propNameValue)
+		switch propNameValue.(type) {
+		case float64:
+			allFields[i] = createFieldOfType2[float64](esqlResponse.Values, column.Name, i, size, true)
+		case int:
+			allFields[i] = createFieldOfType2[int](esqlResponse.Values, column.Name, i, size, true)
+		case string:
+			allFields[i] = createFieldOfType2[string](esqlResponse.Values, column.Name, i, size, true)
+		case bool:
+			allFields[i] = createFieldOfType2[bool](esqlResponse.Values, column.Name, i, size, true)
+		default:
+			fieldVector := make([]*json.RawMessage, size)
+			for i, value := range esqlResponse.Values {
+				bytes, err := json.Marshal(value[i])
+				if err != nil {
+					// We skip values that cannot be marshalled
+					continue
+				}
+				value := json.RawMessage(bytes)
+				fieldVector[i] = &value
+			}
+			field := data.NewField(column.Name, nil, fieldVector)
+			field.Config = &data.FieldConfig{Filterable: &isFilterable}
+			allFields[i] = field
+		}
+	}
+
+	frames := data.Frames{}
+	frame := data.NewFrame("", allFields...)
+
+	frames = append(frames, frame)
+	queryRes.Frames = frames
+
+	result.Responses[refID] = queryRes
+
+	return &result, nil
+}
+
+func findTheFirstNonNilDocValueForIndex(values [][]interface{}, index int) interface{} {
+	for _, value := range values {
+		if value[index] != nil {
+			return value[index]
+		}
+	}
+	return nil
+}
 
 func parseResponse(ctx context.Context, responses []*es.SearchResponse, targets []*Query, configuredFields es.ConfiguredFields, keepLabelsInResponse bool, logger log.Logger) (*backend.QueryDataResponse, error) {
 	result := backend.QueryDataResponse{
@@ -1179,6 +1247,20 @@ func createFieldOfType[T int | float64 | bool | string](docs []map[string]interf
 	fieldVector := make([]*T, size)
 	for i, doc := range docs {
 		value, ok := doc[propName].(T)
+		if !ok {
+			continue
+		}
+		fieldVector[i] = &value
+	}
+	field := data.NewField(propName, nil, fieldVector)
+	field.Config = &data.FieldConfig{Filterable: &isFilterable}
+	return field
+}
+
+func createFieldOfType2[T int | float64 | bool | string](values [][]interface{}, propName string, index, size int, isFilterable bool) *data.Field {
+	fieldVector := make([]*T, size)
+	for i, value := range values {
+		value, ok := value[index].(T)
 		if !ok {
 			continue
 		}

@@ -12,7 +12,7 @@ import * as common from '@grafana/schema';
 
 export type BucketAggregation = (DateHistogram | Histogram | Terms | Filters | GeoHashGrid | Nested);
 
-export type MetricAggregation = (Count | PipelineMetricAggregation | MetricAggregationWithSettings);
+export type MetricAggregation = (Count | PipelineMetricAggregation | MetricAggregationWithSettings | ESQL);
 
 export type BucketAggregationType = ('terms' | 'filters' | 'geohash_grid' | 'date_histogram' | 'histogram' | 'nested');
 
@@ -117,7 +117,7 @@ export interface GeoHashGridSettings {
 
 export type PipelineMetricAggregationType = ('moving_avg' | 'moving_fn' | 'derivative' | 'serial_diff' | 'cumulative_sum' | 'bucket_script');
 
-export type MetricAggregationType = ('count' | 'avg' | 'sum' | 'min' | 'max' | 'extended_stats' | 'percentiles' | 'cardinality' | 'raw_document' | 'raw_data' | 'logs' | 'rate' | 'top_metrics' | PipelineMetricAggregationType);
+export type MetricAggregationType = ('count' | 'avg' | 'sum' | 'min' | 'max' | 'extended_stats' | 'percentiles' | 'cardinality' | 'raw_document' | 'raw_data' | 'logs' | 'rate' | 'top_metrics' | 'esql' | PipelineMetricAggregationType);
 
 export interface BaseMetricAggregation {
   hide?: boolean;
@@ -231,6 +231,13 @@ export interface RawDocument extends BaseMetricAggregation {
     size?: string;
   };
   type: 'raw_document';
+}
+
+export interface ESQL extends BaseMetricAggregation {
+  settings?: {
+    query?: string;
+  };
+  type: 'esql';
 }
 
 export interface RawData extends BaseMetricAggregation {
@@ -397,6 +404,11 @@ export interface ElasticsearchDataQuery extends common.DataQuery {
    * Name of time field
    */
   timeField?: string;
+
+  /**
+   * ESQL query
+   */
+  esqlQuery?: string;
 }
 
 export const defaultElasticsearchDataQuery: Partial<ElasticsearchDataQuery> = {

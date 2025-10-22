@@ -53,6 +53,7 @@ type Client interface {
 	GetConfiguredFields() ConfiguredFields
 	ExecuteMultisearch(r *MultiSearchRequest) (*MultiSearchResponse, error)
 	MultiSearch() *MultiSearchRequestBuilder
+	ExecuteESQLQuery(query string) (*ESQLResponse, error)
 }
 
 // NewClient creates a new elasticsearch client
@@ -132,7 +133,6 @@ func (c *baseClientImpl) encodeBatchRequests(requests []*multiRequest) ([]byte, 
 }
 
 func (c *baseClientImpl) executeRequest(method, uriPath, uriQuery string, body []byte) (*http.Response, error) {
-	c.logger.Debug("Sending request to Elasticsearch", "url", c.ds.URL)
 	u, err := url.Parse(c.ds.URL)
 	if err != nil {
 		return nil, backend.DownstreamError(fmt.Errorf("URL could not be parsed: %w", err))
@@ -158,6 +158,70 @@ func (c *baseClientImpl) executeRequest(method, uriPath, uriQuery string, body [
 		return nil, err
 	}
 	return resp, nil
+}
+
+func (c *baseClientImpl) executeRequest2(method, uriPath, query string) (*http.Response, error) {
+	u, err := url.Parse(c.ds.URL)
+	if err != nil {
+		return nil, backend.DownstreamError(fmt.Errorf("URL could not be parsed: %w", err))
+	}
+	u.Path = path.Join(u.Path, uriPath)
+	params := url.Values{}
+	params.Add("format", "json")
+	u.RawQuery = params.Encode()
+
+	body := map[string]string{
+		"query": query,
+	}
+
+	jsonData, err := json.Marshal(body)
+
+	if err != nil {
+		c.logger.Error("###### executeRequest2 json.Marshal error:::", err)
+		panic(err)
+	}
+
+	var req *http.Request
+	if method == http.MethodPost {
+		req, err = http.NewRequestWithContext(c.ctx, http.MethodPost, u.String(), bytes.NewBuffer(jsonData))
+	} else {
+		req, err = http.NewRequestWithContext(c.ctx, http.MethodGet, u.String(), nil)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-ndjson")
+
+	//nolint:bodyclose
+	resp, err := c.ds.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+func (c *baseClientImpl) ExecuteESQLQuery(query string) (*ESQLResponse, error) {
+
+	resp, err := c.executeRequest2(http.MethodPost, "_query", query)
+	if err != nil {
+		return nil, err
+	}
+
+	var esqlResponse ESQLResponse
+
+	esqlResponse.Status = resp.StatusCode
+	esqlResponse.Response = &ESQLSearchResponse{}
+	esqlResponse.Response.DocumentsFound = 0
+	esqlResponse.Response.Columns = []ESQLColumns{}
+	esqlResponse.Response.Values = [][]interface{}{}
+
+	dec := json.NewDecoder(resp.Body)
+	err = dec.Decode(&esqlResponse.Response)
+	if err != nil {
+		return nil, err
+	}
+	return &esqlResponse, nil
 }
 
 func (c *baseClientImpl) ExecuteMultisearch(r *MultiSearchRequest) (*MultiSearchResponse, error) {

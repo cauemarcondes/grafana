@@ -73,6 +73,21 @@ type MultiSearchResponse struct {
 	Responses []*SearchResponse `json:"responses"`
 }
 
+type ESQLColumns struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+type ESQLSearchResponse struct {
+	DocumentsFound int             `json:"documents_found"`
+	Columns        []ESQLColumns   `json:"columns"`
+	Values         [][]interface{} `json:"values"`
+}
+
+type ESQLResponse struct {
+	Status   int                 `json:"status,omitempty"`
+	Response *ESQLSearchResponse `json:"response"`
+}
+
 // Query represents a query
 type Query struct {
 	Bool *BoolQuery `json:"bool"`

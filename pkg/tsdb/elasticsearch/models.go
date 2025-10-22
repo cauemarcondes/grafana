@@ -13,6 +13,7 @@ type Query struct {
 	BucketAggs    []*BucketAgg `json:"bucketAggs"`
 	Metrics       []*MetricAgg `json:"metrics"`
 	Alias         string       `json:"alias"`
+	ESQLQuery     string       `json:"esqlQuery"`
 	Interval      time.Duration
 	IntervalMs    int64
 	RefID         string

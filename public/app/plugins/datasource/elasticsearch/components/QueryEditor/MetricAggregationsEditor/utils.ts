@@ -8,6 +8,18 @@ import {
 import { isMetricAggregationWithField, isPipelineAggregationWithMultipleBucketPaths } from './aggregations';
 
 export const metricAggregationConfig: MetricsConfiguration = {
+  esql: {
+    label: 'ESQL',
+    impliedQueryType: 'esql',
+    requiresField: false,
+    supportsInlineScript: true,
+    supportsMissing: false,
+    isPipelineAgg: false,
+    supportsMultipleBucketPaths: false,
+    hasSettings: false,
+    hasMeta: false,
+    defaults: {},
+  },
   count: {
     label: 'Count',
     impliedQueryType: 'metrics',

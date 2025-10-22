@@ -3,13 +3,10 @@ package elasticsearch
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/grafana/grafana-plugin-sdk-go/backend"
@@ -49,7 +46,6 @@ var newElasticsearchDataQuery = func(ctx context.Context, client es.Client, req 
 func (e *elasticsearchDataQuery) execute() (*backend.QueryDataResponse, error) {
 	start := time.Now()
 	response := backend.NewQueryDataResponse()
-	e.logger.Debug("Parsing queries", "queriesLength", len(e.dataQueries))
 	queries, err := parseQuery(e.dataQueries, e.logger)
 	if err != nil {
 		mq, _ := json.Marshal(e.dataQueries)
@@ -71,42 +67,56 @@ func (e *elasticsearchDataQuery) execute() (*backend.QueryDataResponse, error) {
 		}
 	}
 
-	req, err := ms.Build()
+	// req, err := ms.Build()
+	// if err != nil {
+	// 	mqs, _ := json.Marshal(e.dataQueries)
+	// 	e.logger.Error("Failed to build multisearch request", "error", err, "queriesLength", len(queries), "queries", string(mqs), "duration", time.Since(start), "stage", es.StagePrepareRequest)
+	// 	response.Responses[e.dataQueries[0].RefID] = backend.ErrorResponseWithErrorSource(err)
+	// 	return response, nil
+	// }
+
+	esqlResponse, err := e.client.ExecuteESQLQuery(ms.GetESQLQuery())
 	if err != nil {
-		mqs, _ := json.Marshal(e.dataQueries)
-		e.logger.Error("Failed to build multisearch request", "error", err, "queriesLength", len(queries), "queries", string(mqs), "duration", time.Since(start), "stage", es.StagePrepareRequest)
-		response.Responses[e.dataQueries[0].RefID] = backend.ErrorResponseWithErrorSource(err)
-		return response, nil
+		e.logger.Error("Failed to execute ESQL query", "error", err, "duration", time.Since(start), "stage", es.StagePrepareRequest)
+		return nil, err
 	}
+	e.logger.Info("################ esqlResponse", "esqlResponse", esqlResponse.Response.Values)
+	return parseESQLResponse(esqlResponse, e.logger, e.dataQueries[0].RefID)
+	// if err != nil {
+	// 	e.logger.Error("Failed to execute ESQL query", "error", err, "duration", time.Since(start), "stage", es.StagePrepareRequest)
+	// 	response.Responses[e.dataQueries[0].RefID] = backend.ErrorResponseWithErrorSource(err)
+	// 	return response, nil
+	// }
 
-	e.logger.Info("Prepared request", "queriesLength", len(queries), "duration", time.Since(start), "stage", es.StagePrepareRequest)
-	res, err := e.client.ExecuteMultisearch(req)
-	if err != nil {
-		if backend.IsDownstreamHTTPError(err) {
-			err = backend.DownstreamError(err)
-		}
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) {
-			// Unsupported protocol scheme is a common error when the URL is not valid and should be treated as a downstream error
-			if urlErr.Err != nil && strings.HasPrefix(urlErr.Err.Error(), "unsupported protocol scheme") {
-				err = backend.DownstreamError(err)
-			}
-		}
-		response.Responses[e.dataQueries[0].RefID] = backend.ErrorResponseWithErrorSource(err)
-		return response, nil
-	}
+	// e.logger.Info("Prepared request", "queriesLength", len(queries), "duration", time.Since(start), "stage", es.StagePrepareRequest)
+	// res, err := e.client.ExecuteMultisearch(req)
+	// if err != nil {
+	// 	if backend.IsDownstreamHTTPError(err) {
+	// 		err = backend.DownstreamError(err)
+	// 	}
+	// 	var urlErr *url.Error
+	// 	if errors.As(err, &urlErr) {
+	// 		// Unsupported protocol scheme is a common error when the URL is not valid and should be treated as a downstream error
+	// 		if urlErr.Err != nil && strings.HasPrefix(urlErr.Err.Error(), "unsupported protocol scheme") {
+	// 			err = backend.DownstreamError(err)
+	// 		}
+	// 	}
+	// 	response.Responses[e.dataQueries[0].RefID] = backend.ErrorResponseWithErrorSource(err)
+	// 	return response, nil
+	// }
 
-	if res.Status >= 400 {
-		statusErr := fmt.Errorf("unexpected status code: %d", res.Status)
-		if backend.ErrorSourceFromHTTPStatus(res.Status) == backend.ErrorSourceDownstream {
-			response.Responses[e.dataQueries[0].RefID] = backend.ErrorResponseWithErrorSource(backend.DownstreamError(statusErr))
-		} else {
-			response.Responses[e.dataQueries[0].RefID] = backend.ErrorResponseWithErrorSource(backend.PluginError(statusErr))
-		}
-		return response, nil
-	}
+	// if res.Status >= 400 {
+	// 	statusErr := fmt.Errorf("unexpected status code: %d", res.Status)
+	// 	if backend.ErrorSourceFromHTTPStatus(res.Status) == backend.ErrorSourceDownstream {
+	// 		response.Responses[e.dataQueries[0].RefID] = backend.ErrorResponseWithErrorSource(backend.DownstreamError(statusErr))
+	// 	} else {
+	// 		response.Responses[e.dataQueries[0].RefID] = backend.ErrorResponseWithErrorSource(backend.PluginError(statusErr))
+	// 	}
+	// 	return response, nil
+	// }
 
-	return parseResponse(e.ctx, res.Responses, queries, e.client.GetConfiguredFields(), e.keepLabelsInResponse, e.logger)
+	// return parseResponse(e.ctx, res.Responses, queries, e.client.GetConfiguredFields(), e.keepLabelsInResponse, e.logger)
+	// return nil, nil
 }
 
 func (e *elasticsearchDataQuery) processQuery(q *Query, ms *es.MultiSearchRequestBuilder, from, to int64) error {
@@ -126,12 +136,20 @@ func (e *elasticsearchDataQuery) processQuery(q *Query, ms *es.MultiSearchReques
 		processLogsQuery(q, b, from, to, defaultTimeField)
 	} else if isDocumentQuery(q) {
 		processDocumentQuery(q, b, from, to, defaultTimeField)
+	} else if isESQLQuery(q) {
+		processESQLQuery(q, b, from, to, defaultTimeField, e.logger)
 	} else {
 		// Otherwise, it is a time series query and we process it
 		processTimeSeriesQuery(q, b, from, to, defaultTimeField)
 	}
 
 	return nil
+}
+
+func processESQLQuery(q *Query, b *es.SearchRequestBuilder, from, to int64, defaultTimeField string, logger log.Logger) {
+	esqlQuery := q.ESQLQuery + " | LIMIT 100"
+	b.AddESQLQuery(esqlQuery)
+
 }
 
 func setFloatPath(settings *simplejson.Json, path ...string) {
@@ -349,11 +367,15 @@ func getPipelineAggField(m *MetricAgg) string {
 func isQueryWithError(query *Query) error {
 	if len(query.BucketAggs) == 0 {
 		// If no aggregations, only document and logs queries are valid
-		if len(query.Metrics) == 0 || (!isLogsQuery(query) && !isDocumentQuery(query)) {
+		if len(query.Metrics) == 0 || (!isLogsQuery(query) && !isDocumentQuery(query) && !isESQLQuery(query)) {
 			return fmt.Errorf("invalid query, missing metrics and aggregations")
 		}
 	}
 	return nil
+}
+
+func isESQLQuery(query *Query) bool {
+	return query.Metrics[0].Type == esqlType
 }
 
 func isLogsQuery(query *Query) bool {

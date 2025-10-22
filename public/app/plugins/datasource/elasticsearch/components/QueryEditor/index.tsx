@@ -14,6 +14,7 @@ import { isSupportedVersion, isTimeSeriesQuery, unsupportedVersionMessage } from
 
 import { BucketAggregationsEditor } from './BucketAggregationsEditor';
 import { ElasticsearchProvider } from './ElasticsearchQueryContext';
+import { EsqlQueryEditor } from './EsqlQueryEditor';
 import { MetricAggregationsEditor } from './MetricAggregationsEditor';
 import { metricAggregationConfig } from './MetricAggregationsEditor/utils';
 import { QueryTypeSelector } from './QueryTypeSelector';
@@ -100,6 +101,8 @@ const QueryEditorForm = ({ value }: Props) => {
     (metric) => metricAggregationConfig[metric.type].impliedQueryType === 'metrics'
   );
 
+  const isESQL = value.metrics?.some((metric) => metric.type === 'esql');
+
   return (
     <>
       <div className={styles.root}>
@@ -108,29 +111,35 @@ const QueryEditorForm = ({ value }: Props) => {
           <QueryTypeSelector />
         </div>
       </div>
-      <div className={styles.root}>
-        <InlineLabel width={17}>Lucene Query</InlineLabel>
-        <ElasticSearchQueryField onChange={(query) => dispatch(changeQuery(query))} value={value?.query} />
+      {isESQL ? (
+        <EsqlQueryEditor />
+      ) : (
+        <>
+          <div className={styles.root}>
+            <InlineLabel width={17}>Lucene Query</InlineLabel>
+            <ElasticSearchQueryField onChange={(query) => dispatch(changeQuery(query))} value={value?.query} />
 
-        {isTimeSeries && (
-          <InlineField
-            label="Alias"
-            labelWidth={15}
-            tooltip="Aliasing only works for timeseries queries (when the last group is 'Date Histogram'). For all other query types this field is ignored."
-            htmlFor={inputId}
-          >
-            <Input
-              id={inputId}
-              placeholder="Alias Pattern"
-              onBlur={(e) => dispatch(changeAliasPattern(e.currentTarget.value))}
-              defaultValue={value.alias}
-            />
-          </InlineField>
-        )}
-      </div>
+            {isTimeSeries && (
+              <InlineField
+                label="Alias"
+                labelWidth={15}
+                tooltip="Aliasing only works for timeseries queries (when the last group is 'Date Histogram'). For all other query types this field is ignored."
+                htmlFor={inputId}
+              >
+                <Input
+                  id={inputId}
+                  placeholder="Alias Pattern"
+                  onBlur={(e) => dispatch(changeAliasPattern(e.currentTarget.value))}
+                  defaultValue={value.alias}
+                />
+              </InlineField>
+            )}
+          </div>
 
-      <MetricAggregationsEditor nextId={nextId} />
-      {showBucketAggregationsEditor && <BucketAggregationsEditor nextId={nextId} />}
+          <MetricAggregationsEditor nextId={nextId} />
+          {showBucketAggregationsEditor && <BucketAggregationsEditor nextId={nextId} />}
+        </>
+      )}
     </>
   );
 };

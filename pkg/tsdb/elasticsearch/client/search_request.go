@@ -25,9 +25,10 @@ const (
 
 // SearchRequestBuilder represents a builder which can build a search request
 type SearchRequestBuilder struct {
-	interval time.Duration
-	index    string
-	size     int
+	esqlQuery string
+	interval  time.Duration
+	index     string
+	size      int
 	// Currently sort is map, but based in examples it should be an array https://www.elastic.co/guide/en/elasticsearch/reference/current/sort-search-results.html
 	sort         map[string]any
 	queryBuilder *QueryBuilder
@@ -80,6 +81,16 @@ func (b *SearchRequestBuilder) Build() (*SearchRequest, error) {
 	}
 
 	return &sr, nil
+}
+
+// ESQLQuery sets the ESQL query for the search request
+func (b *SearchRequestBuilder) AddESQLQuery(esqlQuery string) *SearchRequestBuilder {
+	b.esqlQuery = esqlQuery
+	return b
+}
+
+func (b *SearchRequestBuilder) GetESQLQuery() string {
+	return b.esqlQuery
 }
 
 // Size sets the size of the search request
@@ -191,6 +202,15 @@ func (m *MultiSearchRequestBuilder) Build() (*MultiSearchRequest, error) {
 	return &MultiSearchRequest{
 		Requests: requests,
 	}, nil
+}
+
+func (m *MultiSearchRequestBuilder) GetESQLQuery() string {
+	for _, sb := range m.requestBuilders {
+		if sb.GetESQLQuery() != "" {
+			return sb.GetESQLQuery()
+		}
+	}
+	return ""
 }
 
 // QueryBuilder represents a query builder
